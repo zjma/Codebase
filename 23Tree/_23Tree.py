@@ -1,6 +1,8 @@
 ﻿
 class _23Node:
     def __init__(self, keys, childs):
+        assert len(keys) <= 3
+        assert len(keys)+1==len(childs)
         self.keys = keys
         self.childs = childs
 
@@ -134,6 +136,15 @@ class _23Node:
                 self.popUpKey(res, self)
                 assert len(self.keys)<=2
             return self,False
+
+    def insertKeyInLeaf(self, x):
+        assert self.isLeaf()
+        self.keys.append(x)
+        self.keys.sort()
+        self.childs.append(None)
+
+    def isFat(self):
+        return len(self.keys) >= 3
 
     @staticmethod
     def popUpKey(fatChldIdx, parent):
