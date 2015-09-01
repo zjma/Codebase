@@ -35,6 +35,9 @@ class _23TreeVisualizer():
             - 'a'   complete animation (default)
             - 'aa'  step-by-step animation
         """
+        if cmd=='a':
+            raise Exception('Not implemented')
+
         if cmd not in ['a','aa']:
             print('Invalid animation mode: {0}'.format(cmd))
             return
@@ -151,6 +154,10 @@ class _23TreeVisualizer():
                         delete(oldkey)
                         ...
         """
+        print('Not implemented')
+        return
+        ###TODO
+
         if self.stat != 0:
             print('Cannont do that. One operation is in progress.')
             return

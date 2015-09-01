@@ -3,10 +3,10 @@ from _23Tree import _23Node
 class _23TreeModel():
     def __init__(self, **kwargs):
         self.stat = 0
-        #node0 = _23Node([66],[None,None])
-        #node1 = _23Node([88,99],[None,None,None])
-        #self.root = _23Node([77],[node0,node1])
-        self.root = _23Node([],[None])
+        node0 = _23Node([66],[None,None])
+        node1 = _23Node([88,99],[None,None,None])
+        self.root = _23Node([77],[node0,node1])
+        #self.root = _23Node([],[None])
         self.insertSearchPath = None
         self.insertSearchChoice = None
         self.newkey = None

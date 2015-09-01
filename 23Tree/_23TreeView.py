@@ -1,9 +1,9 @@
-from matplotlib import pyplot
+﻿from matplotlib import pyplot
 from matplotlib import animation
 
 class _23Painter():
-    FrameCount = 30
-    FrameInterval = 20
+    FrameCount = 10
+    FrameInterval = 60
     ACDCTime = 0.2
     KeyWidth = 0.2
 
@@ -12,25 +12,49 @@ class _23Painter():
         self.fig = pyplot.figure()
         pyplot.xlim(0,5)
         pyplot.ylim(0,5)
-        self.key2obj = {}
         self.modelStatLast = 0
+        
+        #self.rootobj, = pyplot.plot(2.5,2.5)
+        self.key2obj = {}
+
+        # A circle showing the current node.
+        self.focusMarkerObj = pyplot.scatter(2.5,2.5,s=[800], edgecolor='none', facecolor='none')
+        #TODO
+
+        self.keysFocused = None
+
+        self.rootPos = (2.5,2.5)
+        self.key2pos = {}
+        self.winPos = (0,5,0,5)
+        self.focusMarkerPos = (2.5,2.5)
         pass
 
     @staticmethod
-    def _animfunc(frame_idx, objs, objinfos):
-        for obj in objs:
-            objinfo = objinfos[obj]
-            target = objinfo['targets'][frame_idx]
-            objtype = objinfo['type']
-            if objtype == 'text':
-                obj.set_position(target['pos'])
-            elif objtype == 'line':
-                x0,y0 = target['pos0']
-                x1,y1 = target['pos1']
-                obj.set_data([x0,x1],[y0,y1])
-            else:
-                assert False
-        return objs
+    def _animfunc(frame_idx, key2obj, focusmarkerobj, key2traj, winTraj, focusMarkerTraj):
+        """
+        Reposition drawable objects and camera.
+
+        Params:
+            frame_idx(int)
+            key2obj(dict)           key => drawable object
+            key2traj(dict)          key => trajectory of the key
+            winTraj(list)           window trajectory
+            focusMarkerTraj(list)   focus marker trajectory
+        """
+        ### move the keys on data plane
+        for key,txt in key2obj.items():
+            tmpDatPos = key2traj[key][frame_idx]
+            txt.set_position(tmpDatPos)
+
+        ### move the camera
+        x0,x1,y0,y1 = winTraj[frame_idx]
+        pyplot.xlim(x0,x1)
+        pyplot.ylim(y0,y1)
+
+        ### move the focus marker
+        #x,y = focusMarkerTraj[frame_idx]
+        #focusmarkerobj.set_data([x,],[y,])
+        #TODO
 
     @staticmethod
     def gen1DTrajectory(x0,x1):
@@ -71,29 +95,23 @@ class _23Painter():
                 pos = TRI_AREA + BRECT_AREA * (t - _23Painter.ACDCTime) / (1-_23Painter.ACDCTime*2)
             else:
                 pos = D - TRI_AREA * (1-t) * (1-t) / _23Painter.ACDCTime / _23Painter.ACDCTime
-            positions.append(pos)
+            positions.append(x0+pos)
             pass
         return positions
 
-    def genObjChanges(self, newobjmap):
-        """
-        Compare new generated objmap with the current one,
-        and generate the differences, used in animation.
-        """
-        pass
+    @staticmethod
+    def genNdimTrajectory(p0,p1):
+        pst = zip(p0,p1)
+        trajs = list(map(lambda tp:_23Painter.gen1DTrajectory(tp[0],tp[1]), pst))
+        return list(zip(*trajs))
 
     @staticmethod
-    def genNodeInfoFromBrief(brief):
+    def genNode2RawPos(brief):
         """
-        Generate node library.
+        We compute raw position for each node:
 
-        We use (i,j) to identify the node in row i col j in tree structure.
-
-        We compute the following for each node:
-        {
-            'pos': (x,y) # Where in data space should the node be
-            'keys': ('a','b','c') # keys
-        }
+        Returns:
+            (dict of (float,float)):    raw positions
         """
         ret = {}
         layer_count = len(brief)
@@ -116,25 +134,25 @@ class _23Painter():
         return ret
 
     @staticmethod
-    def genKeysInfo(brief, nodeinfo, extra):
+    def genKey2RawPos(treeStruct, node2RawPos, extra):
         ret = {}
-        layer_count = len(brief)
+        layer_count = len(treeStruct)
         for i in range(layer_count-1,-1,-1):
-            layeri = brief[i]
+            layeri = treeStruct[i]
             node_count = len(layeri)
             for j in range(node_count):
                 nodeij = layeri[j]
                 key_count = len(nodeij)
                 for k in range(key_count):
                     key = nodeij[k]
-                    nodex,nodey = nodeinfo[(i,j)]
+                    nodex,nodey = node2RawPos[(i,j)]
                     keypos = _23Painter.calcKeyPosFromNodePos(nodex,nodey,k,key_count)
-                    #ret[k] = {'row':i,'col':j,'idx':k,'totbro':key_count,'pos':keypos}
                     ret[key] = keypos
-
-        if extra['op'] == 1:
-            nodex,nodey = nodeinfo[extra['focus']]
-            ret[extra['newkey']] = (nodex,nodey+0.3)
+        if extra['op']==1:
+            newkey = extra['newkey']
+            bnode = extra['focus']
+            nodex,nodey = node2RawPos[bnode]
+            ret[newkey] = (nodex,nodey+_23Painter.KeyWidth)
         return ret
 
     @staticmethod
@@ -146,32 +164,82 @@ class _23Painter():
         return (keyx, keyy)
 
     @staticmethod
-    def genKey2oldpos(key2obj):
-        ret = dict(map(lambda X: (X[0],X[1].get_position()), key2obj.items()))
-        return ret
+    def getNewKeys(key2OldDatPos, key2NewDatPos):
+        oldset = set(key2OldDatPos.keys())
+        newset = set(key2NewDatPos.keys())
+        return newset.difference(oldset)
 
     @staticmethod
-    def compareKeyPoses(key2oldpos, key2newpos):
-        oldset = set(key2oldpos.keys())
-        newset = set(key2newpos.keys())
-        newkeys = newset.difference()
-        animkeys = oldset.intersection(newset)
-        key2anim = {}
-        for key in animkeys:
-            x0,y0 = key2oldpos[key]
-            x1,y1 = key2newpos[key]
+    def genKey2Traj(key2OldDatPos, key2NewDatPos):
+        key2traj = {}
+        for key in key2NewDatPos.keys():
+            x1,y1 = key2NewDatPos[key]
+            x0,y0 = key2OldDatPos.get(key, (x1,y1))
             trxs = _23Painter.gen1DTrajectory(x0,x1)
             trys = _23Painter.gen1DTrajectory(y0,y1)
-            tpos = zip(trxs, trys)
-            targets = list(map(lambda x:{'pos':x}, tpos))
-            key2anim[key] = {
-                                'targets':targets,
-                                'type':'text'}
-        return newkeys, key2anim
+            tpos = list(zip(trxs, trys))
+            key2traj[key] = tpos
+        return key2traj
 
     @staticmethod
-    def genObj2Anim(key2obj, key2anim):
-        return dict(map(lambda x:(key2obj[x[0]],x[1]), key2anim.items()))
+    def genNewFocus(oldFocus, treeStruct, extra):
+        if 'focus' not in extra:
+            return oldFocus
+        i,j = extra['focus']
+        return treeStruct[i][j]
+
+    _SUB2D = staticmethod(lambda a,b: tuple([v0-v1 for v0,v1 in zip(a,b)]))
+    _ADD2D = staticmethod(lambda a,b: tuple([v0+v1 for v0,v1 in zip(a,b)]))
+
+    @staticmethod
+    def applyDeltaToKey2pos(key2pos, delta):
+        movekey = lambda kp: (kp[0],_23Painter._ADD2D(kp[1],delta))
+        return dict(map(movekey, key2pos.items()))
+
+    @staticmethod
+    def genFocusPos2(keysFocused, key2pos, rootpos):
+        if keysFocused==None or len(keysFocused)==0:
+            return rootpos
+        isFoced = lambda kv: kv[0] in keysFocused
+        getPos = lambda kv: kv[1]
+        involvedItems = list(filter(isFoced, key2pos.items()))
+        poses = list(map(getPos, involvedItems))
+        xs = [p[0] for p in poses]
+        ys = [p[1] for p in poses]
+        fx = sum(xs)/len(xs)
+        fy = sum(ys)/len(ys)
+        return (fx,fy)
+
+
+    @staticmethod
+    def resizeRect(winpos, ratio):
+        x0,x1,y0,y1 = winpos
+        cx = (x0+x1)/2
+        cy = (y0+y1)/2
+        dx = (x1-x0)*ratio/2
+        dy = (y1-y0)*ratio/2
+        return (cx-dx,cx+dx,cy-dy,cy+dy)
+
+    @staticmethod
+    def pointInRect(point, rect):
+        x0,x1,y0,y1 = rect
+        px,py = point
+        return px>x0 and px<x1 and py>y0 and py<y1
+
+    @staticmethod
+    def genNewWinPos(oldWinPos, oldFocusPos, newFocusPos):
+        oldActWinPos = _23Painter.resizeRect(oldWinPos, .9)
+        if _23Painter.pointInRect(newFocusPos, oldActWinPos):
+            return oldWinPos
+        dx,dy = _23Painter._SUB2D(newFocusPos, oldFocusPos)
+        delta = (abs(dx),abs(dy))
+        newWidth = newHeight = max(delta)*2
+        center = newFocusPos
+        x0,y0 = _23Painter._SUB2D(center, delta)
+        x1,y1 = _23Painter._ADD2D(center, delta)
+
+        newActWinPos = (x0,x1,y0,y1)
+        return _23Painter.resizeRect(newActWinPos, 1.2)
 
     def update(self, useAnim):
         """
@@ -180,46 +248,69 @@ class _23Painter():
         Params:
             useAnim(bool)   whether to use animation to illustrate the update
         """
-        #print("CrtModelStat={0}, useAnim={1}".format(self.model.stat, useAnim))
+        oldWinPos = self.winPos
+        oldFocus = self.keysFocused
+        key2OldDatPos = self.key2pos
+        rootOldPos = self.rootPos
+        oldFocusMarkerPos = self.focusMarkerPos
 
-        tree,extra = self.model.genTreeStat()
-        nodes = _23Painter.genNodeInfoFromBrief(tree)
-        key2newpos = _23Painter.genKeysInfo(tree, nodes, extra)
+        treeStruct,extra = self.model.genTreeStat()
         
-        keynewcount = len(key2newpos)
-        objkeycount = len(self.key2obj)
+        newFocus = self.genNewFocus(oldFocus, treeStruct, extra)
+
+        node2NewRawPos = self.genNode2RawPos(treeStruct)
+        key2NewRawPos = self.genKey2RawPos(treeStruct, node2NewRawPos, extra)
+        rootRawPos = node2NewRawPos[(0,0)]
+
+        oldFocusPos = self.genFocusPos2(oldFocus, key2OldDatPos, rootOldPos)
+        rawFocusPos = self.genFocusPos2(oldFocus, key2NewRawPos, rootRawPos)
+
+        vecR2D = self._SUB2D(oldFocusPos, rawFocusPos)
+
+        key2NewDatPos = self.applyDeltaToKey2pos(key2NewRawPos, vecR2D)
+        rootNewPos = self._ADD2D(rootRawPos, vecR2D)
+
+        newkeys = self.getNewKeys(key2OldDatPos, key2NewDatPos)
+        key2traj = self.genKey2Traj(key2OldDatPos, key2NewDatPos)
+
+        rootNewPos = self._ADD2D(rootRawPos, vecR2D)
+        newFocusPos = self.genFocusPos2(newFocus, key2NewDatPos, rootNewPos)
+        newFocusMarkerPos = newFocusPos
+
+        newWinPos = self.genNewWinPos(oldWinPos, oldFocusPos, newFocusPos)
+        winTraj = self.genNdimTrajectory(oldWinPos, newWinPos)
+        focusMarkerTraj = self.genNdimTrajectory(oldFocusMarkerPos, newFocusMarkerPos)
+
+        ### Add drawable objects.
+        for newkey in newkeys:
+            x,y = key2NewDatPos[newkey]
+            txt = pyplot.text(x, y, newkey, fontsize=12, ha='center', va='center')
+            self.key2obj[newkey] = txt
+        pyplot.show()
         
-        key2oldpos = _23Painter.genKey2oldpos(self.key2obj)
-        newkeys,key2Anim = _23Painter.compareKeyPoses(key2oldpos, key2newpos)
+        ### Repaint the marker.
+        #TODO
 
-        obj2anim = _23Painter.genObj2Anim(self.key2obj, key2Anim)
+        ### Play animation.
+        animation.FuncAnimation(self.fig,
+                                self._animfunc,
+                                _23Painter.FrameCount,
+                                interval=20,
+                                fargs=(
+                                    self.key2obj,
+                                    self.focusMarkerObj,
+                                    key2traj,
+                                    winTraj,
+                                    focusMarkerTraj),
+                                repeat=False)
+        pyplot.show()
 
-        oldobjs = list(self.key2obj.values())
-        ### Pre-anim phase
-        #   Get all the drawable objects ready.
-        if len(newkeys)>0:
-            for newkey in newkeys:
-                assert type(newkey)==str
-                x,y = key2newpos[newkey]
-                keyobj = pyplot.text(x,y,newkey, fontsize=12)
-                self.key2obj[newkey] = keyobj
-            pyplot.show()
-
-        ### Animate phase
-        #   Play the animation.
-        if len(key2Anim) > 0:
-            animation.FuncAnimation(self.fig,
-                                    self._animfunc,
-                                    _23Painter.FrameCount,
-                                    interval=20,
-                                    fargs=(oldobjs, obj2anim),
-                                    repeat=False,
-                                    blit=True)
-            pyplot.show()
-
-        ### Post-anim phase
-        #   abandon some useless objects.
-        pass
+        ### Update arguments
+        self.key2pos = key2NewDatPos
+        self.rootPos = rootNewPos
+        self.winPos = newWinPos
+        self.keysFocused = newFocus
+        self.focusMarkerPos = newFocusMarkerPos
     pass
 
 

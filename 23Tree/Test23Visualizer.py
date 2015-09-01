@@ -8,5 +8,9 @@ class Test_Test23Visualizer(unittest.TestCase):
 
     def test_A(self):
         self.vt.show()
+        self.vt.animOn('aa')
+        self.vt.add(80)
+        self.vt.step()
+
 if __name__ == '__main__':
     unittest.main()
